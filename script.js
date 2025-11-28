@@ -334,6 +334,16 @@ function showDecision() {
     });
 }
 
+// 按钮悬停效果函数
+const addButtonHover = (btn) => {
+    btn.addEventListener("mouseover", () => {
+        btn.style.background = "#ffe6f0";
+    });
+    btn.addEventListener("mouseout", () => {
+        btn.style.background = "#fff0f6";
+    });
+};
+
 function showEditRepliesModal() {
     showModal({
         title: "修改对话语录",
