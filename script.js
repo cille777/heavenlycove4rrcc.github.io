@@ -1,6 +1,42 @@
 // 初始化语录数组 - 先从本地存储读取，如果没有则使用默认值
 let replies = [];
 
+// ========== 新增：定时器管理代码 ==========
+let activeTimers = [];
+
+// 安全定时器函数
+function safeSetTimeout(callback, delay) {
+    const timerId = setTimeout(() => {
+        callback();
+        // 完成后从数组中移除
+        const index = activeTimers.indexOf(timerId);
+        if (index > -1) activeTimers.splice(index, 1);
+    }, delay);
+    activeTimers.push(timerId);
+    return timerId;
+}
+
+// 清理所有定时器
+function clearAllTimers() {
+    activeTimers.forEach(timerId => clearTimeout(timerId));
+    activeTimers = [];
+}
+
+// 页面隐藏时暂停自动消息
+let isPageVisible = true;
+let autoMessageInterval = null;
+
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        isPageVisible = false;
+        console.log("页面隐藏，暂停自动消息");
+    } else {
+        isPageVisible = true;
+        console.log("页面恢复，继续自动消息");
+    }
+});
+// ========== 新增代码结束 ==========
+
 // 初始化语录的函数
 function initializeReplies() {
     const savedReplies = localStorage.getItem("customReplies");
@@ -84,7 +120,8 @@ function sendMessage() {
     const typing = document.getElementById("typingIndicator");
     typing.style.display = "block";
 
-    setTimeout(() => {
+    // 使用安全定时器
+    safeSetTimeout(() => {
         typing.style.display = "none";
         // 先插入当天日期气泡（如果需要）
         insertDateSeparatorIfNeeded();
@@ -98,17 +135,32 @@ function sendMessage() {
     }, delay);
 }
 
-// 模拟对方主动发消息
+// ========== 修改后的自动消息函数 ==========
 function startAutoMessages() {
-    const interval = getRandomInt(30 * 60 * 1000, 60 * 60 * 1000);
-    setTimeout(() => {
+    // 先清理可能存在的旧定时器
+    clearAllTimers();
+    
+    const scheduleNext = () => {
+        if (!isPageVisible) {
+            // 如果页面不可见，延迟一段时间再检查
+            safeSetTimeout(scheduleNext, 60000); // 1分钟后再次检查
+            return;
+        }
+        
         const willSendToday = Math.random() < 0.7;
         if (willSendToday) {
             const totalMessages = getRandomInt(2, 5);
             sendRandomMessages(totalMessages);
         }
-        startAutoMessages();
-    }, interval);
+        
+        // 设置下一个定时器
+        const nextInterval = getRandomInt(30 * 60 * 1000, 60 * 60 * 1000);
+        safeSetTimeout(scheduleNext, nextInterval);
+    };
+    
+    // 启动第一个定时器
+    const firstInterval = getRandomInt(30 * 60 * 1000, 60 * 60 * 1000);
+    safeSetTimeout(scheduleNext, firstInterval);
 }
 
 // 递归发送随机消息
@@ -121,7 +173,13 @@ function sendRandomMessages(remaining) {
     typing.style.display = "block";
     const typingDuration = getRandomInt(3000, 9000);
 
-    setTimeout(() => {
+    safeSetTimeout(() => {
+        if (!isPageVisible) {
+            // 如果页面不可见，重新安排这条消息
+            safeSetTimeout(() => sendRandomMessages(remaining), 60000);
+            return;
+        }
+        
         typing.style.display = "none";
         insertDateSeparatorIfNeeded();
 
@@ -132,12 +190,14 @@ function sendRandomMessages(remaining) {
         scrollChat();
         saveChatToLocal();
 
+        // 递归调用，但使用安全定时器
         const nextDelay = getRandomInt(10 * 1000, 12 * 60 * 60 * 1000);
-        setTimeout(() => {
+        safeSetTimeout(() => {
             sendRandomMessages(remaining - 1);
         }, nextDelay);
     }, typingDuration);
 }
+// ========== 修改结束 ==========
 
 // 统计对方消息内容
 function updateMessageStats(text) {
@@ -166,6 +226,14 @@ window.addEventListener("load", () => {
             if (text) updateMessageStats(text);
         });
     }
+    
+    // 页面卸载时清理定时器
+    window.addEventListener('beforeunload', () => {
+        clearAllTimers();
+    });
+    
+    // 启动自动消息
+    startAutoMessages();
 });
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -431,9 +499,6 @@ function showEditRepliesModal() {
     });
 }
 
-// 页面加载时启动
-startAutoMessages();
-
 function scrollChat() {
     const chatBox = document.getElementById("chatBox");
     chatBox.scrollTop = chatBox.scrollHeight;
@@ -444,14 +509,6 @@ function saveChatToLocal() {
     const chatBox = document.getElementById("chatBox");
     localStorage.setItem("chatHistory", chatBox.innerHTML);
 }
-
-window.addEventListener("load", () => {
-    const saved = localStorage.getItem("chatHistory");
-    if (saved) {
-        document.getElementById("chatBox").innerHTML = saved;
-        scrollChat();
-    }
-});
 
 // 心情按钮
 document.getElementById("moodButton").addEventListener("click", () => {
@@ -527,7 +584,7 @@ function updateStatusBubble() {
     bubble.style.color = status.textColor;
 
     const nextChange = Math.floor(Math.random() * (86400000 - 30000)) + 30000;
-    setTimeout(updateStatusBubble, nextChange);
+    safeSetTimeout(updateStatusBubble, nextChange);
 }
 
 updateStatusBubble();
